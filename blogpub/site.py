@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import html
 import re
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -34,7 +36,7 @@ footer { margin-top: 4rem; color: #999; font-size: 0.85rem; }
 
 
 def slugify(name: str) -> str:
-    """Turn a notebook name into a URL-safe slug.
+    """Turn a notebook name into a URL-safe slug fragment.
 
     Parameters
     ----------
@@ -44,10 +46,30 @@ def slugify(name: str) -> str:
     Returns
     -------
     str
-        Lowercase, hyphenated slug.
+        Lowercase, hyphenated slug fragment (not guaranteed unique on its
+        own -- see :func:`post_slug`).
     """
     slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
     return slug or "untitled"
+
+
+def post_slug(post: PostInfo) -> str:
+    """Build a unique, stable slug for a post's output filename.
+
+    Includes a short UUID fragment so two notebooks with the same (or
+    equivalent-once-slugified) name don't overwrite each other's output.
+
+    Parameters
+    ----------
+    post : PostInfo
+        The post to build a slug for.
+
+    Returns
+    -------
+    str
+        A unique slug, e.g. ``"my-notebook-a1b2c3d4"``.
+    """
+    return f"{slugify(post.name)}-{post.uuid[:8]}"
 
 
 def _format_date(created_time_ms: str) -> str:
@@ -73,6 +95,7 @@ def render_post(post: PostInfo, page_image_paths: list[str]) -> str:
     str
         Full HTML document for this post.
     """
+    title = html.escape(post.name)
     images_html = "\n".join(
         f'<img class="page-image" src="{path}" alt="Page {i + 1}">'
         for i, path in enumerate(page_image_paths)
@@ -81,12 +104,12 @@ def render_post(post: PostInfo, page_image_paths: list[str]) -> str:
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>{post.name}</title>
+<title>{title}</title>
 <style>{STYLE}</style>
 </head>
 <body>
 <p><a href="../index.html">&larr; back</a></p>
-<h1>{post.name}</h1>
+<h1>{title}</h1>
 <p class="post-date">{_format_date(post.created_time)}</p>
 {images_html}
 <footer>Written by hand, published from a reMarkable.</footer>
@@ -110,7 +133,7 @@ def render_index(posts: list[PostInfo]) -> str:
     """
     ordered = sorted(posts, key=lambda p: p.created_time, reverse=True)
     items = "\n".join(
-        f'<li><a href="posts/{slugify(p.name)}.html">{p.name}</a> '
+        f'<li><a href="posts/{post_slug(p)}.html">{html.escape(p.name)}</a> '
         f'<span class="post-date">{_format_date(p.created_time)}</span></li>'
         for p in ordered
     )
@@ -137,6 +160,10 @@ def write_site(
 ) -> None:
     """Write the full static site (index + posts + images) into a docs directory.
 
+    Replaces the entire ``posts/`` and ``images/`` subdirectories on each
+    run, so notebooks removed from the Blog folder don't linger as stale
+    published pages.
+
     Parameters
     ----------
     posts_with_pages : list of (PostInfo, list of Path)
@@ -146,11 +173,13 @@ def write_site(
     """
     posts_dir = docs_dir / "posts"
     images_dir = docs_dir / "images"
+    shutil.rmtree(posts_dir, ignore_errors=True)
+    shutil.rmtree(images_dir, ignore_errors=True)
     posts_dir.mkdir(parents=True, exist_ok=True)
     images_dir.mkdir(parents=True, exist_ok=True)
 
     for post, page_paths in posts_with_pages:
-        slug = slugify(post.name)
+        slug = post_slug(post)
         post_image_dir = images_dir / slug
         post_image_dir.mkdir(parents=True, exist_ok=True)
 
