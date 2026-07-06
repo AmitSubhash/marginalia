@@ -21,7 +21,7 @@ from blogpub.pull import (
     pull_metadata,
     pull_notebook_pages,
 )
-from blogpub.site import write_site
+from blogpub.site import is_wordmark, write_site
 
 FALLBACK_ALT_TEXT = "A handwritten notebook page."
 
@@ -81,12 +81,20 @@ def main() -> None:
         pages_dir = Path(__file__).parent / ".cache" / "pages"
         shutil.rmtree(pages_dir, ignore_errors=True)
         posts_with_pages = []
+        wordmark_image = None
         for post in posts:
             print(f"Pulling and converting {post.name!r}...")
             pull_notebook_pages(args.ssh_host, post.uuid, cache_dir)
             png_paths = convert_post_pages(post, cache_dir, pages_dir)
             if not png_paths:
                 print(f"  (no pages, skipping {post.name!r})")
+                continue
+
+            # A notebook named "wordmark"/"title" is the handwritten site
+            # header, not a post -- use its first page and skip the rest.
+            if is_wordmark(post):
+                wordmark_image = png_paths[0]
+                print("  -> using as handwritten site wordmark")
                 continue
 
             if args.no_vision:
@@ -110,7 +118,7 @@ def main() -> None:
         if not args.no_vision:
             save_vision_cache(vision_cache_path, vision_cache)
 
-        write_site(posts_with_pages, args.docs_dir)
+        write_site(posts_with_pages, args.docs_dir, wordmark_image)
         print(f"Wrote {len(posts_with_pages)} post(s) to {args.docs_dir}")
     finally:
         if cleanup:

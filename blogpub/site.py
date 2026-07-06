@@ -13,6 +13,7 @@ from .links import LinkRegion
 from .pull import PostInfo
 
 ABOUT_NAMES = {"about", "hi"}
+WORDMARK_NAMES = {"wordmark", "title"}
 SITE_URL = "https://amitsubhash.github.io/marginalia"
 SITE_DESCRIPTION = (
     "A blog written by hand on a reMarkable, published straight from the ink."
@@ -45,7 +46,9 @@ a:hover { color: #35c; }
     letter-spacing: 0.02em;
     text-decoration: none;
     color: #111;
+    display: inline-block;
 }
+.wordmark { height: 3.2rem; width: auto; display: block; }
 .post-date { color: #999; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
 .about-section { margin-bottom: 3rem; }
 /* The handwriting sits directly on the page: the scanned paper is pure white,
@@ -89,7 +92,7 @@ ul.post-list .post-date { min-width: 7.5rem; }
     a { color: #ddd; }
     a:hover { color: #7aa5f0; }
     .site-title a { color: #ddd; }
-    .page-wrap { filter: invert(1) hue-rotate(180deg); }
+    .page-wrap, .wordmark { filter: invert(1) hue-rotate(180deg); }
     .post-date { color: #888; }
     h2.posts-heading { color: #999; }
 }
@@ -131,6 +134,49 @@ def post_slug(post: PostInfo) -> str:
         A unique slug, e.g. ``"my-notebook-a1b2c3d4"``.
     """
     return f"{slugify(post.name)}-{post.uuid[:8]}"
+
+
+def is_wordmark(post: PostInfo) -> bool:
+    """Check whether a notebook is the handwritten site wordmark.
+
+    A notebook named "wordmark" or "title" (case-insensitive) is used as
+    the site's header image (Amit's own handwriting of "marginalia")
+    instead of the typeset fallback, and is not published as a post.
+
+    Parameters
+    ----------
+    post : PostInfo
+        The post to check.
+
+    Returns
+    -------
+    bool
+        True if this notebook is the site wordmark.
+    """
+    return post.name.strip().lower() in WORDMARK_NAMES
+
+
+def _site_header(home_href: str, wordmark_src: str | None) -> str:
+    """Render the site header -- the handwritten wordmark image if available,
+    otherwise the typeset "marginalia" fallback.
+
+    Parameters
+    ----------
+    home_href : str
+        Relative link to the index page from the page being rendered.
+    wordmark_src : str or None
+        Relative path to the wordmark image, or None to use the typeset name.
+
+    Returns
+    -------
+    str
+        The ``<header>`` HTML.
+    """
+    if wordmark_src:
+        inner = f'<img class="wordmark" src="{wordmark_src}" alt="marginalia">'
+    else:
+        inner = "marginalia"
+    return f'<header class="site-title"><a href="{home_href}">{inner}</a></header>'
 
 
 def is_about_page(post: PostInfo) -> bool:
@@ -264,6 +310,7 @@ def render_post(
     page_dims: list[tuple[int, int]],
     page_alt_text: list[str],
     page_links: list[list[LinkRegion]] | None = None,
+    wordmark_src: str | None = None,
 ) -> str:
     """Render a single post's HTML page.
 
@@ -302,7 +349,7 @@ def render_post(
 {_head(post.name, page_alt_text[0] if page_alt_text else SITE_DESCRIPTION, og_image)}
 </head>
 <body>
-<header class="site-title"><a href="../index.html">marginalia</a></header>
+{_site_header("../index.html", wordmark_src)}
 <h1>{title}</h1>
 <p class="post-date">{_format_date(post.created_time)}</p>
 {images_html}
@@ -312,7 +359,10 @@ def render_post(
 
 
 def render_index(
-    posts: list[PostInfo], about_pages_html: str = "", about_og_image: str | None = None
+    posts: list[PostInfo],
+    about_pages_html: str = "",
+    about_og_image: str | None = None,
+    wordmark_src: str | None = None,
 ) -> str:
     """Render the site index listing all posts, newest first.
 
@@ -354,7 +404,7 @@ def render_index(
 {_head("marginalia", SITE_DESCRIPTION, about_og_image)}
 </head>
 <body>
-<header class="site-title"><a href="index.html">marginalia</a></header>
+{_site_header("index.html", wordmark_src)}
 {about_section}
 {list_section}
 </body>
@@ -367,6 +417,7 @@ def write_site(
         tuple[PostInfo, list[Path], list[str], list[list[LinkRegion]]]
     ],
     docs_dir: Path,
+    wordmark_image: Path | None = None,
 ) -> None:
     """Write the full static site (index + posts + images) into a docs directory.
 
@@ -385,6 +436,9 @@ def write_site(
         text, and per-page detected links.
     docs_dir : Path
         Output directory (e.g. a repo's ``docs/`` folder for GitHub Pages).
+    wordmark_image : Path, optional
+        A handwritten "marginalia" wordmark image to use as the site header
+        instead of the typeset fallback.
     """
     posts_dir = docs_dir / "posts"
     images_dir = docs_dir / "images"
@@ -392,6 +446,14 @@ def write_site(
     shutil.rmtree(images_dir, ignore_errors=True)
     posts_dir.mkdir(parents=True, exist_ok=True)
     images_dir.mkdir(parents=True, exist_ok=True)
+
+    wordmark_index_src = None
+    wordmark_post_src = None
+    (docs_dir / "wordmark.png").unlink(missing_ok=True)
+    if wordmark_image is not None:
+        (docs_dir / "wordmark.png").write_bytes(wordmark_image.read_bytes())
+        wordmark_index_src = "wordmark.png"
+        wordmark_post_src = "../wordmark.png"
 
     regular_posts = []
     about_html = ""
@@ -424,10 +486,17 @@ def write_site(
             f"../images/{slug}/page_{i:03d}.png" for i in range(len(page_paths))
         ]
         (posts_dir / f"{slug}.html").write_text(
-            render_post(post, relative_paths, page_dims, page_alt_text, page_links)
+            render_post(
+                post,
+                relative_paths,
+                page_dims,
+                page_alt_text,
+                page_links,
+                wordmark_post_src,
+            )
         )
         regular_posts.append(post)
 
     (docs_dir / "index.html").write_text(
-        render_index(regular_posts, about_html, about_og_image)
+        render_index(regular_posts, about_html, about_og_image, wordmark_index_src)
     )
