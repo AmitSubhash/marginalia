@@ -21,9 +21,7 @@ if ! ssh -o ConnectTimeout=6 -o BatchMode=yes rm2 \
     exit 0
 fi
 
-# shellcheck disable=SC1091
-source .venv/bin/activate
-if ! python generate.py >> "$LOG" 2>&1; then
+if ! .venv/bin/python generate.py >> "$LOG" 2>&1; then
     echo "$(date): generate failed" >> "$LOG"
     exit 0
 fi
