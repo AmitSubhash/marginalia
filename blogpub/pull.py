@@ -122,7 +122,9 @@ def pull_thumbnails(ssh_host: str, uuid: str, cache_dir: Path) -> bool:
     return result.returncode == 0
 
 
-def find_folder_uuid(cache_dir: Path, folder_name: str) -> str | None:
+def find_folder_uuid(
+    cache_dir: Path, folder_name: str, parent: str | None = None
+) -> str | None:
     """Find a CollectionType (folder) document by name, case-insensitively.
 
     Parameters
@@ -131,6 +133,9 @@ def find_folder_uuid(cache_dir: Path, folder_name: str) -> str | None:
         Local metadata cache directory.
     folder_name : str
         Folder name to search for, e.g. ``"Blog"``.
+    parent : str or None, optional
+        If given, only match a folder whose ``parent`` is this UUID (e.g. to
+        find an ``extras`` subfolder inside ``Blog``). Omit to match any.
 
     Returns
     -------
@@ -142,12 +147,13 @@ def find_folder_uuid(cache_dir: Path, folder_name: str) -> str | None:
         if (cache_dir / f"{uuid}.tombstone").exists():
             continue
         metadata = json.loads(metadata_path.read_text())
-        if (
-            metadata.get("type") == "CollectionType"
-            and metadata.get("visibleName", "").strip().lower()
-            == folder_name.strip().lower()
-        ):
-            return uuid
+        if metadata.get("type") != "CollectionType":
+            continue
+        if metadata.get("visibleName", "").strip().lower() != folder_name.strip().lower():
+            continue
+        if parent is not None and metadata.get("parent") != parent:
+            continue
+        return uuid
     return None
 
 

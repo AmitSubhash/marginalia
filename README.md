@@ -27,7 +27,19 @@ Everything the site does is driven by what you name a notebook inside the
 | `Blog` (folder) | The one folder that gets published. Nothing outside it is ever touched. |
 | `Hi` or `About` | The intro shown at the top of the main page (not listed as a post). |
 | `wordmark` or `title` | The handwritten site header / home link (your "amit"). Renders on post pages; the main page shows no header. |
+| `sun` **and** `moon` | The hand-drawn light/dark toggle. Draw both, and a corner button appears that shows the moon in light mode and the sun in dark mode; it remembers the reader's choice. Draw only one (or neither) and the site just follows the reader's system preference with no toggle. |
 | anything else | A normal blog post, listed newest-first. |
+
+**Adding a new post:** make a new notebook, file it in `Blog`, done. Its name
+becomes the post title and its pages become the post body. Editing an existing
+notebook re-publishes it (only changed pages are re-processed). Removing a
+notebook from `Blog` unpublishes it on the next build.
+
+**Keeping `Blog` tidy (optional):** the chrome notebooks (`wordmark`, `sun`,
+`moon`) can live either directly in `Blog` or in a subfolder named `extras`
+inside `Blog`. Put them in `extras` so the top level of `Blog` holds only your
+actual posts. Anything in `extras` that isn't `wordmark`/`sun`/`moon` is
+ignored (never published).
 
 Publishing is automatic: file a notebook into `Blog`, and it goes live within
 ~2 hours (or instantly when you triple-tap the power button). Run

@@ -28,27 +28,52 @@ from blogpub.pull import (
     pull_notebook_pages,
     pull_thumbnails,
 )
-from blogpub.site import is_wordmark, write_site
+from blogpub.site import is_moon, is_sun, is_wordmark, write_site
 
 FALLBACK_ALT_TEXT = "A handwritten notebook page."
 
 
-def _build_wordmark(
+def _build_icon(
     post: PostInfo,
     rmc_render: Path,
     cache_dir: Path,
     pages_dir: Path,
     ssh_host: str,
+    out_name: str,
+    role: str,
 ) -> Path | None:
-    """Choose the best wordmark image for a "wordmark" notebook.
+    """Choose the best small ink image for a chrome notebook (wordmark, sun, moon).
 
     Prefers rmc's high-resolution render, but if that comes out as a filled
-    blob (thick / Calligraphy pen), falls back to the device's own thumbnail
-    render, which handles every pen correctly at lower resolution -- fine for
-    a small header. Returns None if neither is usable (typeset fallback).
+    blob (thick / Calligraphy pen, or a filled sun disk), falls back to the
+    device's own thumbnail render, which handles every pen correctly at lower
+    resolution -- fine for a small header or icon. Returns None if neither is
+    usable.
+
+    Parameters
+    ----------
+    post : PostInfo
+        The chrome notebook (wordmark / sun / moon).
+    rmc_render : Path
+        The already-converted first page (trimmed, bordered, centered).
+    cache_dir : Path
+        Local metadata / thumbnail cache directory.
+    pages_dir : Path
+        Where a thumbnail-derived icon is written, if needed.
+    ssh_host : str
+        SSH alias for pulling thumbnails on the blob fallback.
+    out_name : str
+        Filename for the thumbnail-derived icon (e.g. ``"sun.png"``).
+    role : str
+        Human-readable role for log messages (e.g. ``"sun toggle icon"``).
+
+    Returns
+    -------
+    Path or None
+        Path to the chosen icon image, or None if none is usable.
     """
     if wordmark_render_is_clean(rmc_render):
-        print("  -> using as handwritten site wordmark")
+        print(f"  -> using as handwritten {role}")
         return rmc_render
 
     print(
@@ -61,12 +86,12 @@ def _build_wordmark(
         if page_ids:
             thumb = cache_dir / f"{post.uuid}.thumbnails" / f"{page_ids[0]}.png"
             if thumb.exists():
-                out = pages_dir / "wordmark.png"
+                out = pages_dir / out_name
                 thumbnail_to_wordmark(thumb, out)
-                print("  -> using device thumbnail as handwritten site wordmark")
+                print(f"  -> using device thumbnail as handwritten {role}")
                 return out
 
-    print("  -> no usable wordmark render; keeping typeset fallback", file=sys.stderr)
+    print(f"  -> no usable {role} render; skipping", file=sys.stderr)
     return None
 
 
@@ -111,8 +136,15 @@ def main() -> None:
             )
             sys.exit(1)
 
-        posts = list_posts_in_folder(cache_dir, folder_uuid)
-        if not posts:
+        # Chrome notebooks (wordmark, sun, moon) may live either directly in the
+        # Blog folder or, to keep the folder tidy, in a subfolder named "extras".
+        # Only top-level notebooks become posts; "extras" holds site chrome only.
+        extras_uuid = find_folder_uuid(cache_dir, "extras", parent=folder_uuid)
+        top_level = list_posts_in_folder(cache_dir, folder_uuid)
+        extras_notebooks = (
+            list_posts_in_folder(cache_dir, extras_uuid) if extras_uuid else []
+        )
+        if not top_level and not extras_notebooks:
             print(f'No notebooks found in the "{args.folder}" folder yet.')
             return
 
@@ -125,21 +157,53 @@ def main() -> None:
         pages_dir = Path(__file__).parent / ".cache" / "pages"
         shutil.rmtree(pages_dir, ignore_errors=True)
         posts_with_pages = []
-        wordmark_image = None
-        for post in posts:
-            print(f"Pulling and converting {post.name!r}...")
-            pull_notebook_pages(args.ssh_host, post.uuid, cache_dir)
-            png_paths = convert_post_pages(post, cache_dir, pages_dir)
+        chrome: dict[str, Path | None] = {"wordmark": None, "sun": None, "moon": None}
+
+        def _convert(notebook: PostInfo) -> list[Path]:
+            print(f"Pulling and converting {notebook.name!r}...")
+            pull_notebook_pages(args.ssh_host, notebook.uuid, cache_dir)
+            return convert_post_pages(notebook, cache_dir, pages_dir)
+
+        def _maybe_chrome(notebook: PostInfo, png_paths: list[Path]) -> bool:
+            """Handle a wordmark/sun/moon notebook; return True if it was one."""
+            if is_wordmark(notebook):
+                chrome["wordmark"] = _build_icon(
+                    notebook, png_paths[0], cache_dir, pages_dir,
+                    args.ssh_host, "wordmark.png", "site wordmark",
+                )
+                return True
+            if is_sun(notebook):
+                chrome["sun"] = _build_icon(
+                    notebook, png_paths[0], cache_dir, pages_dir,
+                    args.ssh_host, "sun.png", "sun toggle icon",
+                )
+                return True
+            if is_moon(notebook):
+                chrome["moon"] = _build_icon(
+                    notebook, png_paths[0], cache_dir, pages_dir,
+                    args.ssh_host, "moon.png", "moon toggle icon",
+                )
+                return True
+            return False
+
+        # "extras" is chrome only: anything there that isn't wordmark/sun/moon
+        # is ignored (not published as a post).
+        for notebook in extras_notebooks:
+            png_paths = _convert(notebook)
+            if not png_paths:
+                print(f"  (no pages, skipping {notebook.name!r})")
+                continue
+            if not _maybe_chrome(notebook, png_paths):
+                print(f"  (in extras but not wordmark/sun/moon; skipping {notebook.name!r})")
+
+        # Top level: posts and the About/intro page, plus wordmark/sun/moon if
+        # filed here directly rather than in "extras".
+        for post in top_level:
+            png_paths = _convert(post)
             if not png_paths:
                 print(f"  (no pages, skipping {post.name!r})")
                 continue
-
-            # A notebook named "wordmark"/"title" is the handwritten site
-            # header, not a post -- use its first page and skip the rest.
-            if is_wordmark(post):
-                wordmark_image = _build_wordmark(
-                    post, png_paths[0], cache_dir, pages_dir, args.ssh_host
-                )
+            if _maybe_chrome(post, png_paths):
                 continue
 
             if args.no_vision:
@@ -163,7 +227,13 @@ def main() -> None:
         if not args.no_vision:
             save_vision_cache(vision_cache_path, vision_cache)
 
-        write_site(posts_with_pages, args.docs_dir, wordmark_image)
+        write_site(
+            posts_with_pages,
+            args.docs_dir,
+            chrome["wordmark"],
+            chrome["sun"],
+            chrome["moon"],
+        )
         print(f"Wrote {len(posts_with_pages)} post(s) to {args.docs_dir}")
     finally:
         if cleanup:

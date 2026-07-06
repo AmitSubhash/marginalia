@@ -14,6 +14,8 @@ from .pull import PostInfo
 
 ABOUT_NAMES = {"about", "hi"}
 WORDMARK_NAMES = {"wordmark", "title"}
+SUN_NAMES = {"sun"}
+MOON_NAMES = {"moon"}
 SITE_URL = "https://amitsubhash.github.io/marginalia"
 SITE_DESCRIPTION = (
     "A blog written by hand on a reMarkable, published straight from the ink."
@@ -25,27 +27,57 @@ FAVICON = (
 )
 
 STYLE = """
+/* Theme is driven by CSS variables so a hand-drawn sun/moon toggle can
+   override the system preference. Light values are the defaults; dark values
+   apply either when the OS asks for dark (and the reader hasn't chosen light)
+   or when the reader explicitly picks dark via the toggle. */
+:root {
+    --bg: #fff;
+    --fg: #111;
+    --fg-muted: #aaa;
+    --heading: #666;
+    --link-hover: #35c;
+    --page-filter: none;
+}
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --bg: #000;
+        --fg: #ddd;
+        --fg-muted: #888;
+        --heading: #999;
+        --link-hover: #7aa5f0;
+        --page-filter: invert(1) hue-rotate(180deg);
+    }
+}
+:root[data-theme="dark"] {
+    --bg: #000;
+    --fg: #ddd;
+    --fg-muted: #888;
+    --heading: #999;
+    --link-hover: #7aa5f0;
+    --page-filter: invert(1) hue-rotate(180deg);
+}
 * { box-sizing: border-box; }
 body {
     max-width: 1100px;
     margin: 3rem auto;
     padding: 0 1.5rem;
     font-family: Georgia, "Times New Roman", serif;
-    color: #111;
-    background: #fff;
+    color: var(--fg);
+    background: var(--bg);
     line-height: 1.5;
 }
 h1, h2 { font-weight: normal; }
 h1 { font-style: italic; text-transform: lowercase; }
-a { color: #111; text-decoration-color: #35c; text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
-a:hover { color: #35c; }
+a { color: var(--fg); text-decoration-color: #35c; text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
+a:hover { color: var(--link-hover); }
 .site-title { text-align: center; margin: 1.5rem 0 3rem; }
 .site-title a {
     font-style: italic;
     font-size: 1.6rem;
     letter-spacing: 0.02em;
     text-decoration: none;
-    color: #111;
+    color: var(--fg);
     display: inline-block;
 }
 /* Size the handwritten wordmark by height (a single word); clamp so it never
@@ -55,12 +87,13 @@ a:hover { color: #35c; }
     width: auto;
     display: block;
     margin: 0 auto;
+    filter: var(--page-filter);
 }
 .site-title a:hover .wordmark { opacity: 0.55; }
 /* Dates are the only typeset text left; keep them quiet, like the printed
    page numbers in a real notebook rather than body copy. */
 .post-date {
-    color: #aaa;
+    color: var(--fg-muted);
     font-size: 0.72rem;
     letter-spacing: 0.12em;
     text-transform: uppercase;
@@ -74,6 +107,7 @@ a:hover { color: #35c; }
     position: relative;
     margin: 0.5rem 0;
     width: 100%;
+    filter: var(--page-filter);
 }
 .page-image {
     width: 100%;
@@ -92,7 +126,7 @@ a:hover { color: #35c; }
 h2.posts-heading {
     font-style: italic;
     font-weight: normal;
-    color: #666;
+    color: var(--heading);
     margin-top: 2rem;
 }
 ul.post-list { list-style: none; padding: 0; }
@@ -104,18 +138,59 @@ ul.post-list li {
 }
 ul.post-list .post-date { min-width: 7.5rem; }
 
-/* Dark mode keeps the seamless blend by inverting the scanned pages: white
-   paper becomes near-black (matching the page), black ink becomes light. */
-@media (prefers-color-scheme: dark) {
-    body { background: #000; color: #ddd; }
-    a { color: #ddd; }
-    a:hover { color: #7aa5f0; }
-    .site-title a { color: #ddd; }
-    .page-wrap, .wordmark { filter: invert(1) hue-rotate(180deg); }
-    .post-date { color: #888; }
-    h2.posts-heading { color: #999; }
+/* Hand-drawn light/dark toggle: a quiet corner button holding both the sun and
+   the moon. Only the icon for the mode you'd switch *to* is shown -- the moon
+   in light mode, the sun in dark mode -- and it inverts with the page so the
+   ink reads correctly against either background. */
+.theme-toggle {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    z-index: 10;
+    background: none;
+    border: none;
+    padding: 0.3rem;
+    margin: 0;
+    cursor: pointer;
+    line-height: 0;
 }
+.theme-toggle img {
+    height: 1.9rem;
+    width: auto;
+    display: block;
+    filter: var(--page-filter);
+}
+.theme-toggle .icon-sun { display: none; }
+.theme-toggle .icon-moon { display: block; }
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .theme-toggle .icon-moon { display: none; }
+    :root:not([data-theme="light"]) .theme-toggle .icon-sun { display: block; }
+}
+:root[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+:root[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
+:root[data-theme="light"] .theme-toggle .icon-moon { display: block; }
+:root[data-theme="light"] .theme-toggle .icon-sun { display: none; }
 """
+
+# Runs in <head> before the body paints, so an explicit light/dark choice is
+# applied with no flash of the wrong theme. Kept dependency-free and tiny.
+THEME_BOOT_SCRIPT = """<script>
+(function () {
+  var root = document.documentElement;
+  try {
+    var saved = localStorage.getItem('theme');
+    if (saved === 'light' || saved === 'dark') root.setAttribute('data-theme', saved);
+  } catch (e) {}
+  window.__toggleTheme = function () {
+    var systemDark = window.matchMedia
+      && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var current = root.getAttribute('data-theme') || (systemDark ? 'dark' : 'light');
+    var next = current === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('theme', next); } catch (e) {}
+  };
+})();
+</script>"""
 
 
 def slugify(name: str) -> str:
@@ -173,6 +248,76 @@ def is_wordmark(post: PostInfo) -> bool:
         True if this notebook is the site wordmark.
     """
     return post.name.strip().lower() in WORDMARK_NAMES
+
+
+def is_sun(post: PostInfo) -> bool:
+    """Check whether a notebook is the hand-drawn "sun" light/dark toggle icon.
+
+    A notebook named "sun" (case-insensitive) supplies the light-mode half of
+    the theme toggle and is not published as a post.
+
+    Parameters
+    ----------
+    post : PostInfo
+        The post to check.
+
+    Returns
+    -------
+    bool
+        True if this notebook is the sun toggle icon.
+    """
+    return post.name.strip().lower() in SUN_NAMES
+
+
+def is_moon(post: PostInfo) -> bool:
+    """Check whether a notebook is the hand-drawn "moon" light/dark toggle icon.
+
+    A notebook named "moon" (case-insensitive) supplies the dark-mode half of
+    the theme toggle and is not published as a post.
+
+    Parameters
+    ----------
+    post : PostInfo
+        The post to check.
+
+    Returns
+    -------
+    bool
+        True if this notebook is the moon toggle icon.
+    """
+    return post.name.strip().lower() in MOON_NAMES
+
+
+def _theme_toggle_html(sun_src: str | None, moon_src: str | None) -> str:
+    """Render the hand-drawn light/dark toggle button, if both icons exist.
+
+    The button holds both icons; CSS shows only the one for the mode the
+    reader would switch to (moon in light, sun in dark). Returns an empty
+    string when either icon is missing, so the site falls back to following
+    the system preference with no toggle and no JavaScript.
+
+    Parameters
+    ----------
+    sun_src : str or None
+        Relative path to the sun icon from the page being rendered.
+    moon_src : str or None
+        Relative path to the moon icon from the page being rendered.
+
+    Returns
+    -------
+    str
+        The toggle ``<button>`` HTML, or an empty string.
+    """
+    if not (sun_src and moon_src):
+        return ""
+    return (
+        '<button class="theme-toggle" type="button" onclick="__toggleTheme()" '
+        'aria-label="Switch between light and dark mode" '
+        'title="Switch between light and dark mode">'
+        f'<img class="icon-moon" src="{moon_src}" alt="Switch to dark mode">'
+        f'<img class="icon-sun" src="{sun_src}" alt="Switch to light mode">'
+        "</button>"
+    )
 
 
 def _site_header(home_href: str, wordmark_src: str | None) -> str:
@@ -304,7 +449,9 @@ def _render_pages(
     )
 
 
-def _head(title: str, description: str, og_image: str | None) -> str:
+def _head(
+    title: str, description: str, og_image: str | None, head_extra: str = ""
+) -> str:
     og_image_tag = (
         f'<meta property="og:image" content="{html.escape(og_image)}">'
         if og_image
@@ -320,7 +467,7 @@ def _head(title: str, description: str, og_image: str | None) -> str:
 <meta property="og:type" content="article">
 {og_image_tag}
 <meta name="twitter:card" content="summary_large_image">
-<style>{STYLE}</style>"""
+<style>{STYLE}</style>{head_extra}"""
 
 
 def render_post(
@@ -330,6 +477,8 @@ def render_post(
     page_alt_text: list[str],
     page_links: list[list[LinkRegion]] | None = None,
     wordmark_src: str | None = None,
+    sun_src: str | None = None,
+    moon_src: str | None = None,
 ) -> str:
     """Render a single post's HTML page.
 
@@ -362,12 +511,15 @@ def render_post(
         if page_image_paths
         else None
     )
+    toggle = _theme_toggle_html(sun_src, moon_src)
+    head_extra = THEME_BOOT_SCRIPT if toggle else ""
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
-{_head(post.name, page_alt_text[0] if page_alt_text else SITE_DESCRIPTION, og_image)}
+{_head(post.name, page_alt_text[0] if page_alt_text else SITE_DESCRIPTION, og_image, head_extra)}
 </head>
 <body>
+{toggle}
 {_site_header("../index.html", wordmark_src)}
 <h1>{title}</h1>
 <p class="post-date">{_format_date(post.created_time)}</p>
@@ -382,6 +534,8 @@ def render_index(
     about_pages_html: str = "",
     about_og_image: str | None = None,
     wordmark_src: str | None = None,
+    sun_src: str | None = None,
+    moon_src: str | None = None,
 ) -> str:
     """Render the site index listing all posts, newest first.
 
@@ -420,12 +574,15 @@ def render_index(
     # The main page carries no wordmark header of its own -- it's the intro.
     # A wordmark, if present, is only shown on individual post pages.
     header = _site_header("index.html", wordmark_src) if wordmark_src else ""
+    toggle = _theme_toggle_html(sun_src, moon_src)
+    head_extra = THEME_BOOT_SCRIPT if toggle else ""
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
-{_head("marginalia", SITE_DESCRIPTION, about_og_image)}
+{_head("marginalia", SITE_DESCRIPTION, about_og_image, head_extra)}
 </head>
 <body>
+{toggle}
 {header}
 {about_section}
 {list_section}
@@ -440,6 +597,8 @@ def write_site(
     ],
     docs_dir: Path,
     wordmark_image: Path | None = None,
+    sun_image: Path | None = None,
+    moon_image: Path | None = None,
 ) -> None:
     """Write the full static site (index + posts + images) into a docs directory.
 
@@ -461,6 +620,10 @@ def write_site(
     wordmark_image : Path, optional
         A handwritten "marginalia" wordmark image to use as the site header
         instead of the typeset fallback.
+    sun_image, moon_image : Path, optional
+        Hand-drawn sun and moon icons. When *both* are given, a light/dark
+        toggle button is rendered on every page; otherwise the site follows
+        the system preference with no toggle.
     """
     posts_dir = docs_dir / "posts"
     images_dir = docs_dir / "images"
@@ -474,6 +637,18 @@ def write_site(
     if wordmark_image is not None:
         (docs_dir / "wordmark.png").write_bytes(wordmark_image.read_bytes())
         wordmark_post_src = "../wordmark.png"
+
+    # The toggle needs both icons; place them at the docs root and reference
+    # them relatively from the index (sun.png) and from posts (../sun.png).
+    sun_index_src = moon_index_src = None
+    sun_post_src = moon_post_src = None
+    (docs_dir / "sun.png").unlink(missing_ok=True)
+    (docs_dir / "moon.png").unlink(missing_ok=True)
+    if sun_image is not None and moon_image is not None:
+        (docs_dir / "sun.png").write_bytes(sun_image.read_bytes())
+        (docs_dir / "moon.png").write_bytes(moon_image.read_bytes())
+        sun_index_src, moon_index_src = "sun.png", "moon.png"
+        sun_post_src, moon_post_src = "../sun.png", "../moon.png"
 
     regular_posts = []
     about_html = ""
@@ -513,6 +688,8 @@ def write_site(
                 page_alt_text,
                 page_links,
                 wordmark_post_src,
+                sun_post_src,
+                moon_post_src,
             )
         )
         regular_posts.append(post)
@@ -521,5 +698,12 @@ def write_site(
     # "amit" wordmark up top (that'd duplicate the "I'm Amit" in the intro).
     # The wordmark stays as the header / home link on individual post pages.
     (docs_dir / "index.html").write_text(
-        render_index(regular_posts, about_html, about_og_image, wordmark_src=None)
+        render_index(
+            regular_posts,
+            about_html,
+            about_og_image,
+            wordmark_src=None,
+            sun_src=sun_index_src,
+            moon_src=moon_index_src,
+        )
     )
