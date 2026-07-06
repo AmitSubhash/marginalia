@@ -81,7 +81,6 @@ ul.post-list li {
     margin-bottom: 0.8rem;
 }
 ul.post-list .post-date { min-width: 7.5rem; }
-footer { margin-top: 4rem; color: #999; font-size: 0.85rem; }
 
 /* Dark mode keeps the seamless blend by inverting the scanned pages: white
    paper becomes near-black (matching the page), black ink becomes light. */
@@ -93,7 +92,6 @@ footer { margin-top: 4rem; color: #999; font-size: 0.85rem; }
     .page-wrap { filter: invert(1) hue-rotate(180deg); }
     .post-date { color: #888; }
     h2.posts-heading { color: #999; }
-    footer { color: #777; }
 }
 """
 
@@ -308,7 +306,6 @@ def render_post(
 <h1>{title}</h1>
 <p class="post-date">{_format_date(post.created_time)}</p>
 {images_html}
-<footer>Written by hand, published from a <a href="https://remarkable.com">reMarkable</a>.</footer>
 </body>
 </html>
 """
@@ -360,7 +357,6 @@ def render_index(
 <header class="site-title"><a href="index.html">marginalia</a></header>
 {about_section}
 {list_section}
-<footer>Written by hand, published from a <a href="https://remarkable.com">reMarkable</a>.</footer>
 </body>
 </html>
 """

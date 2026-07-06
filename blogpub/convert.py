@@ -84,6 +84,9 @@ def convert_page_to_png(rm_path: Path, out_png: Path) -> None:
             "white",
             "-border",
             "40",
+            # Strip metadata (incl. timestamps) so identical handwriting yields
+            # byte-identical PNGs -- lets the vision cache key on content hash.
+            "-strip",
             str(out_png),
         ],
         check=True,

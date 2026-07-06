@@ -9,7 +9,12 @@ import tempfile
 from pathlib import Path
 
 from blogpub.convert import convert_post_pages
-from blogpub.links import analyze_page, load_manual_links
+from blogpub.links import (
+    analyze_page_cached,
+    load_manual_links,
+    load_vision_cache,
+    save_vision_cache,
+)
 from blogpub.pull import (
     find_folder_uuid,
     list_posts_in_folder,
@@ -68,6 +73,8 @@ def main() -> None:
             return
 
         manual_links = load_manual_links(args.manual_links)
+        vision_cache_path = Path(__file__).parent / ".cache" / "vision.json"
+        vision_cache = {} if args.no_vision else load_vision_cache(vision_cache_path)
         # Converted page PNGs live in a project-local dir (not the ephemeral
         # temp cache) so the `claude -p` vision subprocess is allowed to read
         # them -- it cannot read arbitrary /var/folders temp paths.
@@ -86,10 +93,12 @@ def main() -> None:
                 page_alt_text = [FALLBACK_ALT_TEXT for _ in png_paths]
                 page_links = [[] for _ in png_paths]
             else:
-                print(f"  Analyzing {len(png_paths)} page(s)...")
-                analyses = [analyze_page(p) for p in png_paths]
+                print(
+                    f"  Analyzing {len(png_paths)} page(s) (cached where unchanged)..."
+                )
+                analyses = [analyze_page_cached(p, vision_cache) for p in png_paths]
                 page_alt_text = [a.alt_text for a in analyses]
-                page_links = [a.links for a in analyses]
+                page_links = [list(a.links) for a in analyses]
 
             post_manual_links = manual_links.get(post.uuid, {})
             for i, extra in post_manual_links.items():
@@ -97,6 +106,9 @@ def main() -> None:
                     page_links[i] = page_links[i] + extra
 
             posts_with_pages.append((post, png_paths, page_alt_text, page_links))
+
+        if not args.no_vision:
+            save_vision_cache(vision_cache_path, vision_cache)
 
         write_site(posts_with_pages, args.docs_dir)
         print(f"Wrote {len(posts_with_pages)} post(s) to {args.docs_dir}")

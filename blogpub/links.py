@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -168,3 +169,88 @@ def load_manual_links(path: Path) -> dict[str, dict[int, list[LinkRegion]]]:
         }
         for uuid, pages in raw.items()
     }
+
+
+def _content_hash(png_path: Path) -> str:
+    return hashlib.sha256(png_path.read_bytes()).hexdigest()
+
+
+def load_vision_cache(path: Path) -> dict[str, PageAnalysis]:
+    """Load cached vision analyses keyed by page-image content hash.
+
+    Parameters
+    ----------
+    path : Path
+        Path to the vision cache JSON file.
+
+    Returns
+    -------
+    dict of str to PageAnalysis
+        Empty dict if the cache doesn't exist yet.
+    """
+    if not path.exists():
+        return {}
+    raw = json.loads(path.read_text())
+    cache = {}
+    for content_hash, entry in raw.items():
+        links = [
+            LinkRegion(text=link["text"], url=link["url"], bbox=tuple(link["bbox"]))
+            for link in entry.get("links", [])
+        ]
+        cache[content_hash] = PageAnalysis(alt_text=entry["alt_text"], links=links)
+    return cache
+
+
+def save_vision_cache(path: Path, cache: dict[str, PageAnalysis]) -> None:
+    """Persist vision analyses keyed by page-image content hash.
+
+    Parameters
+    ----------
+    path : Path
+        Path to write the vision cache JSON file to.
+    cache : dict of str to PageAnalysis
+        The cache to save.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    serializable = {
+        content_hash: {
+            "alt_text": analysis.alt_text,
+            "links": [
+                {"text": link.text, "url": link.url, "bbox": list(link.bbox)}
+                for link in analysis.links
+            ],
+        }
+        for content_hash, analysis in cache.items()
+    }
+    path.write_text(json.dumps(serializable, indent=2, sort_keys=True))
+
+
+def analyze_page_cached(
+    png_path: Path, cache: dict[str, PageAnalysis], model: str = DEFAULT_MODEL
+) -> PageAnalysis:
+    """Return a page's analysis from cache, or compute and cache it.
+
+    Keyed by the SHA-256 of the (metadata-stripped, deterministic) PNG, so a
+    page whose handwriting hasn't changed is never re-sent to the vision
+    model on a subsequent publish run.
+
+    Parameters
+    ----------
+    png_path : Path
+        Path to the rasterized page image.
+    cache : dict of str to PageAnalysis
+        Mutable cache; a fresh analysis is stored into it on a miss.
+    model : str, optional
+        Claude model ID to use on a cache miss.
+
+    Returns
+    -------
+    PageAnalysis
+        The cached or freshly-computed analysis.
+    """
+    key = _content_hash(png_path)
+    if key in cache:
+        return cache[key]
+    analysis = analyze_page(png_path, model=model)
+    cache[key] = analysis
+    return analysis
