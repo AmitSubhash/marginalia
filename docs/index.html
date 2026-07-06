@@ -14,12 +14,12 @@
 <style>
 * { box-sizing: border-box; }
 body {
-    max-width: 900px;
+    max-width: 1100px;
     margin: 3rem auto;
     padding: 0 1.5rem;
     font-family: Georgia, "Times New Roman", serif;
     color: #111;
-    background: #faf9f5;
+    background: #fff;
     line-height: 1.5;
 }
 h1, h2 { font-weight: normal; }
@@ -36,18 +36,18 @@ a:hover { color: #35c; }
 }
 .post-date { color: #999; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
 .about-section { margin-bottom: 3rem; }
+/* The handwriting sits directly on the page: the scanned paper is pure white,
+   the page is pure white, and there is no border or shadow -- so the ink
+   reads as part of the page itself rather than a photo of a separate sheet. */
 .page-wrap {
     position: relative;
-    margin: 1.5rem 0;
+    margin: 0.5rem 0;
     width: 100%;
 }
 .page-image {
     width: 100%;
     height: auto;
     display: block;
-    border: none;
-    border-radius: 2px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 6px 20px rgba(0, 0, 0, 0.05);
 }
 .link-overlay {
     position: absolute;
@@ -71,14 +71,14 @@ ul.post-list li {
 ul.post-list .post-date { min-width: 7.5rem; }
 footer { margin-top: 4rem; color: #999; font-size: 0.85rem; }
 
+/* Dark mode keeps the seamless blend by inverting the scanned pages: white
+   paper becomes near-black (matching the page), black ink becomes light. */
 @media (prefers-color-scheme: dark) {
-    body { background: #1c1c1c; color: #ddd; }
+    body { background: #000; color: #ddd; }
     a { color: #ddd; }
     a:hover { color: #7aa5f0; }
     .site-title a { color: #ddd; }
-    .page-image {
-        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 4px 24px rgba(0, 0, 0, 0.5);
-    }
+    .page-wrap { filter: invert(1) hue-rotate(180deg); }
     .post-date { color: #888; }
     h2.posts-heading { color: #999; }
     footer { color: #777; }
@@ -88,7 +88,7 @@ footer { margin-top: 4rem; color: #999; font-size: 0.85rem; }
 <body>
 <header class="site-title"><a href="index.html">marginalia</a></header>
 <div class="about-section"><div class="page-wrap">
-<img class="page-image" src="images/hi-700f4c01/page_000.png" alt="Handwritten introduction from Amit, first-year neuroengineering PhD student at Indiana University, with sketched icons for GitHub, LinkedIn, and X (crossed out), inviting viewers to find his &#x27;handwritten yaps&#x27; and contact him via email." width="1279" height="1574" loading="eager" decoding="async">
+<img class="page-image" src="images/hi-700f4c01/page_000.png" alt="Handwritten introduction by Amit, a first-year Neuroengineering PhD student at Indiana University, inviting visitors to find his handwritten notes with icons for GitHub, LinkedIn, and X social media platforms and email contact information." width="1279" height="1574" loading="eager" decoding="async">
 <a class="link-overlay" href="https://github.com/AmitSubhash" title="Github" style="left:2.74%;top:74.02%;width:17.59%;height:4.44%"></a>
 <a class="link-overlay" href="https://www.linkedin.com/in/amitsubhash/" title="LinkedIn" style="left:38.70%;top:74.02%;width:23.07%;height:4.44%"></a>
 <a class="link-overlay" href="https://x.com/amit1subhash" title="X" style="left:82.49%;top:74.02%;width:5.86%;height:3.81%"></a>

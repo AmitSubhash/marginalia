@@ -26,12 +26,12 @@ FAVICON = (
 STYLE = """
 * { box-sizing: border-box; }
 body {
-    max-width: 900px;
+    max-width: 1100px;
     margin: 3rem auto;
     padding: 0 1.5rem;
     font-family: Georgia, "Times New Roman", serif;
     color: #111;
-    background: #faf9f5;
+    background: #fff;
     line-height: 1.5;
 }
 h1, h2 { font-weight: normal; }
@@ -48,18 +48,18 @@ a:hover { color: #35c; }
 }
 .post-date { color: #999; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
 .about-section { margin-bottom: 3rem; }
+/* The handwriting sits directly on the page: the scanned paper is pure white,
+   the page is pure white, and there is no border or shadow -- so the ink
+   reads as part of the page itself rather than a photo of a separate sheet. */
 .page-wrap {
     position: relative;
-    margin: 1.5rem 0;
+    margin: 0.5rem 0;
     width: 100%;
 }
 .page-image {
     width: 100%;
     height: auto;
     display: block;
-    border: none;
-    border-radius: 2px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 6px 20px rgba(0, 0, 0, 0.05);
 }
 .link-overlay {
     position: absolute;
@@ -83,14 +83,14 @@ ul.post-list li {
 ul.post-list .post-date { min-width: 7.5rem; }
 footer { margin-top: 4rem; color: #999; font-size: 0.85rem; }
 
+/* Dark mode keeps the seamless blend by inverting the scanned pages: white
+   paper becomes near-black (matching the page), black ink becomes light. */
 @media (prefers-color-scheme: dark) {
-    body { background: #1c1c1c; color: #ddd; }
+    body { background: #000; color: #ddd; }
     a { color: #ddd; }
     a:hover { color: #7aa5f0; }
     .site-title a { color: #ddd; }
-    .page-image {
-        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 4px 24px rgba(0, 0, 0, 0.5);
-    }
+    .page-wrap { filter: invert(1) hue-rotate(180deg); }
     .post-date { color: #888; }
     h2.posts-heading { color: #999; }
     footer { color: #777; }

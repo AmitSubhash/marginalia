@@ -65,12 +65,18 @@ class PageAnalysis:
     links: list[LinkRegion]
 
 
-def analyze_page(png_path: Path, model: str = DEFAULT_MODEL) -> PageAnalysis:
+def analyze_page(
+    png_path: Path, model: str = DEFAULT_MODEL, attempts: int = 3
+) -> PageAnalysis:
     """Ask Claude for alt text and any handwritten links, in one call.
 
     Bounding-box precision from a vision model is approximate, not pixel-exact
     -- overlays built from this should be treated as a best-effort convenience,
     not a guarantee of perfect alignment.
+
+    Retries a few times if the response isn't valid JSON, since ``claude -p``
+    can intermittently return prose (e.g. a one-time permission prompt for the
+    temp directory) instead of the requested JSON.
 
     Parameters
     ----------
@@ -78,35 +84,44 @@ def analyze_page(png_path: Path, model: str = DEFAULT_MODEL) -> PageAnalysis:
         Path to the rasterized page image.
     model : str, optional
         Claude model ID to use.
+    attempts : int, optional
+        How many times to try before giving up and using generic alt text.
 
     Returns
     -------
     PageAnalysis
-        Falls back to a generic alt text and no links if the response can't
-        be parsed.
+        Falls back to a generic alt text and no links if every attempt fails
+        to parse.
     """
     prompt = _PROMPT_TEMPLATE.format(image_path=png_path.resolve())
-    result = subprocess.run(
-        ["claude", "-p", "--model", model, prompt],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    raw = result.stdout.strip()
-    if raw.startswith("```"):
-        raw = raw.strip("`")
-        raw = raw[raw.find("{") : raw.rfind("}") + 1]
-
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        print(
-            f"  warning: vision response for {png_path.name} wasn't valid JSON, "
-            f"falling back to generic alt text: {raw[:200]!r}",
-            file=sys.stderr,
+    parsed = None
+    raw = ""
+    for attempt in range(attempts):
+        result = subprocess.run(
+            ["claude", "-p", "--model", model, prompt],
+            check=True,
+            capture_output=True,
+            text=True,
         )
-        return PageAnalysis(alt_text="A handwritten notebook page.", links=[])
+        raw = result.stdout.strip()
+        if raw.startswith("```"):
+            raw = raw.strip("`")
+            raw = raw[raw.find("{") : raw.rfind("}") + 1]
+        try:
+            parsed = json.loads(raw)
+            break
+        except json.JSONDecodeError:
+            if attempt < attempts - 1:
+                continue
+            print(
+                f"  warning: vision response for {png_path.name} wasn't valid JSON "
+                f"after {attempts} attempts, falling back to generic alt text: "
+                f"{raw[:200]!r}",
+                file=sys.stderr,
+            )
+            return PageAnalysis(alt_text="A handwritten notebook page.", links=[])
 
+    assert parsed is not None
     links = []
     for entry in parsed.get("links", []):
         try:

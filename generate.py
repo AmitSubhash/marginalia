@@ -68,7 +68,11 @@ def main() -> None:
             return
 
         manual_links = load_manual_links(args.manual_links)
-        pages_dir = cache_dir / "_pages"
+        # Converted page PNGs live in a project-local dir (not the ephemeral
+        # temp cache) so the `claude -p` vision subprocess is allowed to read
+        # them -- it cannot read arbitrary /var/folders temp paths.
+        pages_dir = Path(__file__).parent / ".cache" / "pages"
+        shutil.rmtree(pages_dir, ignore_errors=True)
         posts_with_pages = []
         for post in posts:
             print(f"Pulling and converting {post.name!r}...")
