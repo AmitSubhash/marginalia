@@ -162,6 +162,9 @@ ul.post-list .post-date { min-width: 7.5rem; }
     display: block;
     filter: var(--page-filter);
 }
+/* The sun's core ring is smaller and its rays lighter than the moon's solid
+   disc, so at equal height it reads a touch small; nudge it up to balance. */
+.theme-toggle .icon-sun { height: 3.2rem; }
 .theme-toggle .icon-moon { display: none; }
 .theme-toggle .icon-sun { display: block; }
 @media (prefers-color-scheme: dark) {
