@@ -140,16 +140,15 @@ ul.post-list .post-date { min-width: 7.5rem; }
     line-height: 0;
 }
 .theme-toggle img {
-    /* Big enough that the hand-drawn detail (sun rays, moon craters) reads at a
-       glance and the button is a comfortable tap target on mobile. */
-    height: 2.7rem;
+    /* The sun and moon are pre-aligned on their circle and padded to one
+       canvas (sized to the sun's rays), so a single height keeps the ring and
+       disc the same diameter. Large enough that the drawn detail reads and the
+       button is a comfortable tap target; the circle itself is ~0.6 of this. */
+    height: 4.8rem;
     width: auto;
     display: block;
     filter: var(--page-filter);
 }
-/* The sun's core ring is smaller and its rays lighter than the moon's solid
-   disc, so at equal height it reads a touch small; nudge it up to balance. */
-.theme-toggle .icon-sun { height: 3.2rem; }
 .theme-toggle .icon-moon { display: none; }
 .theme-toggle .icon-sun { display: block; }
 @media (prefers-color-scheme: dark) {

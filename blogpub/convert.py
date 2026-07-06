@@ -148,67 +148,63 @@ def first_page_ids(post: PostInfo, cache_dir: Path) -> list[str]:
     return [page["id"] for page in content["cPages"]["pages"]]
 
 
-def wordmark_render_is_clean(png_path: Path, threshold: float = 0.25) -> bool:
-    """Heuristic: does a rendered wordmark look like clean handwriting, not a
+def wordmark_render_is_clean(
+    png_path: Path, survive_threshold: float = 0.25, fill_threshold: float = 0.45
+) -> bool:
+    """Heuristic: does a rendered drawing look like clean line art, not a
     filled blob?
 
     Some reMarkable pens (Calligraphy, thick brushes) don't convert cleanly
     through rmc -- their variable-width strokes render as solid jagged shapes.
-    A filled shape survives a several-pixel erosion; thin handwriting mostly
-    disappears. So the fraction of ink that survives erosion cleanly separates
-    the two (measured: ~0.5 for a Calligraphy blob, ~0.08 for a Fineliner).
+    Two signals separate a solid blob from detailed line art:
+
+    * **erosion survival** -- a filled shape survives a several-pixel erosion;
+      thin handwriting mostly disappears (~0.5 for a Calligraphy blob, ~0.08
+      for a Fineliner).
+    * **bounding-box fill** -- a filled blob inks most of its bounding box
+      (~0.58 measured); detailed line art, even with *thick* strokes (e.g. a
+      rayed sun with an open ring), inks only a small fraction (~0.25).
+
+    Survival alone misfires on thick-but-detailed line art, whose chunky
+    strokes survive erosion just like a fill. Requiring a blob to *both*
+    survive erosion *and* fill its box lets that detailed art through while
+    still catching genuine calligraphy blobs.
 
     Parameters
     ----------
     png_path : Path
-        The rendered wordmark PNG.
-    threshold : float, optional
-        Survival ratio above which the render is treated as a blob.
+        The rendered PNG.
+    survive_threshold : float, optional
+        Erosion-survival ratio above which a render may be a blob.
+    fill_threshold : float, optional
+        Bounding-box ink fraction above which a surviving render is a blob.
 
     Returns
     -------
     bool
-        True if the render looks like clean handwriting.
+        True if the render looks like clean line art (use it directly).
     """
-    ink = float(
-        subprocess.run(
-            [
-                "magick",
-                str(png_path),
-                "-threshold",
-                "50%",
-                "-format",
-                "%[fx:1-mean]",
-                "info:",
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.strip()
-    )
+
+    def _measure(*ops: str) -> float:
+        return float(
+            subprocess.run(
+                ["magick", str(png_path), *ops, "info:"],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+        )
+
+    ink = _measure("-threshold", "50%", "-format", "%[fx:1-mean]")
     if ink <= 0:
         return False
-    survived = float(
-        subprocess.run(
-            [
-                "magick",
-                str(png_path),
-                "-threshold",
-                "50%",
-                "-negate",
-                "-morphology",
-                "Erode",
-                "Disk:6",
-                "-format",
-                "%[fx:mean]",
-                "info:",
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.strip()
+    survived = _measure(
+        "-threshold", "50%", "-negate", "-morphology", "Erode", "Disk:6",
+        "-format", "%[fx:mean]",
     )
-    return (survived / ink) < threshold
+    fill = _measure("-threshold", "50%", "-trim", "+repage", "-format", "%[fx:1-mean]")
+    is_blob = (survived / ink) >= survive_threshold and fill >= fill_threshold
+    return not is_blob
 
 
 def thumbnail_to_wordmark(thumb_path: Path, out_png: Path) -> None:
@@ -248,30 +244,54 @@ def thumbnail_to_wordmark(thumb_path: Path, out_png: Path) -> None:
     )
 
 
-def _ink_bbox(arr: np.ndarray, ink_threshold: int) -> tuple[int, int, int, int] | None:
-    """Return the (left, top, right, bottom) bounding box of ink in a grayscale
-    array, or None if there is no ink. ``right``/``bottom`` are exclusive."""
+def _main_circle(
+    arr: np.ndarray, ink_threshold: int, n_r: int = 70
+) -> tuple[float, float, float, float] | None:
+    """Locate an icon's dominant circle: the sun's ring, the moon's outline.
+
+    Works in the icon's bounding-box frame (its center is stable, unlike the
+    ink centroid, which a lopsided feature such as edge shading can drag off).
+    Bins ink by radius and takes the peak of *circumferential density* (ink per
+    unit circumference, ``count / r``): a thick continuous circle spikes there,
+    while sparse rays or interior stipple do not. That gives the sun's ring
+    (rays sit at larger radii, lower density) and the moon's outline (interior
+    stipple sits at smaller radii).
+
+    Returns ``(cx, cy, circle_radius, max_radius)`` or None if there's no ink.
+    """
     ink = arr < ink_threshold
-    rows = np.any(ink, axis=1)
-    cols = np.any(ink, axis=0)
-    if not rows.any():
+    ys, xs = np.nonzero(ink)
+    if ys.size == 0:
         return None
-    row_idx = np.flatnonzero(rows)
-    col_idx = np.flatnonzero(cols)
-    return int(col_idx[0]), int(row_idx[0]), int(col_idx[-1] + 1), int(row_idx[-1] + 1)
+    cx = (xs.min() + xs.max()) / 2.0
+    cy = (ys.min() + ys.max()) / 2.0
+    radii = np.sqrt((ys - cy) ** 2 + (xs - cx) ** 2)
+    max_radius = float(radii.max())
+    counts, edges = np.histogram(radii, bins=n_r, range=(0.0, max_radius))
+    centers = (edges[:-1] + edges[1:]) / 2.0
+    density = counts / np.maximum(centers, 1.0)
+    lo = int(0.15 * n_r)  # skip the cluttered core
+    peak = lo + int(np.argmax(density[lo:]))
+    return cx, cy, float(centers[peak]), max_radius
 
 
 def normalize_icon_pair(
-    paths: list[Path], *, ink_threshold: int = 200, margin_frac: float = 0.14
+    paths: list[Path], *, ink_threshold: int = 128, margin_frac: float = 0.06
 ) -> None:
-    """Make a set of small ink icons render at a matched size.
+    """Align a set of icons on their dominant circle and pad to one canvas.
 
-    Toggle icons are drawn by hand at whatever scale is convenient, so a sun
-    and a moon can arrive very differently sized. This trims each to its ink,
-    scales every icon so its longest ink dimension matches the largest icon's,
-    then centers each in an identical square canvas. The result: both icons
-    share the same footprint and the same visual weight, so the corner button
-    is the same size in either toggle state and neither icon looks bigger.
+    Toggle icons are drawn by hand: a sun (an inner ring with rays reaching
+    past it) and a moon (an outline disc) arrive at different scales, and their
+    *main circles* are at different fractions of their overall size. Matching
+    bounding boxes would leave the sun's ring smaller than the moon's disc.
+
+    Instead this finds each icon's main circle (see :func:`_main_circle`),
+    scales every icon so those circles share one radius, and centers each on
+    its circle in an identical square canvas. So the sun's ring and the moon's
+    disc come out the same diameter and concentric: toggling holds that circle
+    in place while the sun's rays (or the moon's craters) swap around it. The
+    canvas is sized to the widest icon (the sun, including its rays), so the
+    moon simply sits with more space around its disc.
 
     Modifies the files in place.
 
@@ -282,29 +302,35 @@ def normalize_icon_pair(
     ink_threshold : int, optional
         Grayscale value below which a pixel counts as ink (0-255).
     margin_frac : float, optional
-        White padding around the ink, as a fraction of the matched ink size.
+        White padding around the widest icon, as a fraction of its extent.
     """
-    cropped: list[Image.Image | None] = []
+    entries = []
     for path in paths:
-        arr = np.asarray(Image.open(path).convert("L"))
-        bbox = _ink_bbox(arr, ink_threshold)
-        cropped.append(
-            Image.fromarray(arr[bbox[1] : bbox[3], bbox[0] : bbox[2]]) if bbox else None
-        )
+        img = Image.open(path).convert("L")
+        circle = _main_circle(np.asarray(img), ink_threshold)
+        entries.append((path, img, circle))
 
-    reaches = [max(img.size) for img in cropped if img is not None]
-    if not reaches:
+    circles = [c for _, _, c in entries if c is not None]
+    if not circles:
         return
-    target = max(reaches)
-    side = int(round(target * (1 + 2 * margin_frac)))
+    target_radius = max(circle_radius for *_, circle_radius, _ in circles)
+    half = max(
+        max_radius * (target_radius / circle_radius)
+        for *_, circle_radius, max_radius in circles
+    )
+    side = int(round(2.0 * half * (1.0 + margin_frac)))
 
-    for img, path in zip(cropped, paths):
-        if img is None:
+    for path, img, circle in entries:
+        if circle is None:
             continue
-        scale = target / max(img.size)
-        width = max(1, round(img.width * scale))
-        height = max(1, round(img.height * scale))
-        resized = img.resize((width, height), Image.Resampling.LANCZOS)
+        cx, cy, circle_radius, _ = circle
+        scale = target_radius / circle_radius
+        resized = img.resize(
+            (max(1, round(img.width * scale)), max(1, round(img.height * scale))),
+            Image.Resampling.LANCZOS,
+        )
         canvas = Image.new("L", (side, side), 255)
-        canvas.paste(resized, ((side - width) // 2, (side - height) // 2))
+        offset_x = int(round(side / 2.0 - cx * scale))
+        offset_y = int(round(side / 2.0 - cy * scale))
+        canvas.paste(resized, (offset_x, offset_y))
         canvas.save(path)
