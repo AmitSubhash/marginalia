@@ -11,6 +11,7 @@ from pathlib import Path
 
 from .links import LinkRegion
 from .pull import PostInfo
+from .title import crop_title
 
 ABOUT_NAMES = {"about", "hi"}
 WORDMARK_NAMES = {"wordmark", "title"}
@@ -133,10 +134,22 @@ ul.post-list { list-style: none; padding: 0; }
 ul.post-list li {
     display: flex;
     gap: 1rem;
-    align-items: baseline;
-    margin-bottom: 0.8rem;
+    align-items: center;
+    margin-bottom: 1rem;
 }
 ul.post-list .post-date { min-width: 7.5rem; }
+/* The post title in the index is the real first line of ink from the post,
+   cropped out -- not a font. Sized to a couple of lines, inverts in dark mode
+   like every other ink on the site, and fades on hover as a link affordance. */
+.post-title-ink {
+    height: clamp(1.6rem, 4vw, 2.2rem);
+    width: auto;
+    max-width: 100%;
+    display: block;
+    filter: var(--page-filter);
+    transition: opacity 0.12s;
+}
+a:hover .post-title-ink { opacity: 0.6; }
 
 /* Hand-drawn light/dark toggle: a quiet corner button holding both the sun and
    the moon. The icon shows the *current* mode -- the sun in light mode, the
@@ -506,7 +519,6 @@ def render_post(
     str
         Full HTML document for this post.
     """
-    title = html.escape(post.name)
     if page_links is None:
         page_links = [[] for _ in page_image_paths]
     images_html = _render_pages(page_image_paths, page_dims, page_alt_text, page_links)
@@ -525,7 +537,6 @@ def render_post(
 <body>
 {toggle}
 {_site_header("../index.html", wordmark_src)}
-<h1>{title}</h1>
 <p class="post-date">{_format_date(post.created_time)}</p>
 {images_html}
 </body>
@@ -540,6 +551,7 @@ def render_index(
     wordmark_src: str | None = None,
     sun_src: str | None = None,
     moon_src: str | None = None,
+    post_titles: dict[str, str] | None = None,
 ) -> str:
     """Render the site index listing all posts, newest first.
 
@@ -559,11 +571,26 @@ def render_index(
     str
         Full HTML document for the index page.
     """
+    post_titles = post_titles or {}
+
+    def _title_link(post: PostInfo) -> str:
+        """The post's handwritten title strip if we cropped one, else its name."""
+        href = f"posts/{post_slug(post)}.html"
+        title_src = post_titles.get(post.uuid)
+        if title_src:
+            inner = (
+                f'<img class="post-title-ink" src="{title_src}" '
+                f'alt="{html.escape(post.name)}">'
+            )
+        else:
+            inner = html.escape(post.name)
+        return f'<a href="{href}">{inner}</a>'
+
     ordered = sorted(posts, key=lambda p: p.created_time, reverse=True)
     if ordered:
         items = "\n".join(
             f'<li><span class="post-date">{_format_date(p.created_time)}</span>'
-            f'<a href="posts/{post_slug(p)}.html">{html.escape(p.name)}</a></li>'
+            f"{_title_link(p)}</li>"
             for p in ordered
         )
         list_section = f'<h2 class="posts-heading">posts</h2>\n<ul class="post-list">\n{items}\n</ul>'
@@ -655,6 +682,7 @@ def write_site(
         sun_post_src, moon_post_src = "../sun.png", "../moon.png"
 
     regular_posts = []
+    post_titles: dict[str, str] = {}
     about_html = ""
     about_og_image = None
 
@@ -698,6 +726,11 @@ def write_site(
         )
         regular_posts.append(post)
 
+        # Crop the post's handwritten title (its first ink block) for the
+        # index. Falls back to the typeset name if there's no clean title.
+        if dests and crop_title(dests[0], post_image_dir / "title.png"):
+            post_titles[post.uuid] = f"images/{slug}/title.png"
+
     # The main page is the handwritten intro itself, so it doesn't repeat the
     # "amit" wordmark up top (that'd duplicate the "I'm Amit" in the intro).
     # The wordmark stays as the header / home link on individual post pages.
@@ -709,5 +742,6 @@ def write_site(
             wordmark_src=None,
             sun_src=sun_index_src,
             moon_src=moon_index_src,
+            post_titles=post_titles,
         )
     )

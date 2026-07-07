@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>%E2%9C%8E</text></svg>">
 <title>Testing</title>
-<meta name="description" content="Handwritten note reading &quot;Checking if this actually works? gotta keep up tradition &amp; write&quot; followed by a code snippet printing &quot;Hello World, I&#x27;ve Arrived&quot;.">
+<meta name="description" content="A handwritten notebook page.">
 <meta property="og:title" content="Testing">
-<meta property="og:description" content="Handwritten note reading &quot;Checking if this actually works? gotta keep up tradition &amp; write&quot; followed by a code snippet printing &quot;Hello World, I&#x27;ve Arrived&quot;.">
+<meta property="og:description" content="A handwritten notebook page.">
 <meta property="og:type" content="article">
 <meta property="og:image" content="https://amitsubhash.github.io/marginalia/images/testing-8b9d6f62/page_000.png">
 <meta name="twitter:card" content="summary_large_image">
@@ -118,10 +118,22 @@ ul.post-list { list-style: none; padding: 0; }
 ul.post-list li {
     display: flex;
     gap: 1rem;
-    align-items: baseline;
-    margin-bottom: 0.8rem;
+    align-items: center;
+    margin-bottom: 1rem;
 }
 ul.post-list .post-date { min-width: 7.5rem; }
+/* The post title in the index is the real first line of ink from the post,
+   cropped out -- not a font. Sized to a couple of lines, inverts in dark mode
+   like every other ink on the site, and fades on hover as a link affordance. */
+.post-title-ink {
+    height: clamp(1.6rem, 4vw, 2.2rem);
+    width: auto;
+    max-width: 100%;
+    display: block;
+    filter: var(--page-filter);
+    transition: opacity 0.12s;
+}
+a:hover .post-title-ink { opacity: 0.6; }
 
 /* Hand-drawn light/dark toggle: a quiet corner button holding both the sun and
    the moon. The icon shows the *current* mode -- the sun in light mode, the
@@ -180,10 +192,9 @@ ul.post-list .post-date { min-width: 7.5rem; }
 <body>
 <button class="theme-toggle" type="button" onclick="__toggleTheme()" aria-label="Switch between light and dark mode" title="Switch between light and dark mode"><img class="icon-sun" src="../sun.png" alt="Switch to dark mode"><img class="icon-moon" src="../moon.png" alt="Switch to light mode"></button>
 <header class="site-title"><a href="../index.html"><img class="wordmark" src="../wordmark.png" alt="marginalia"></a></header>
-<h1>Testing</h1>
 <p class="post-date">7 Jul 2026</p>
 <div class="page-wrap">
-<img class="page-image" src="../images/testing-8b9d6f62/page_000.png" alt="Handwritten note reading &quot;Checking if this actually works? gotta keep up tradition &amp; write&quot; followed by a code snippet printing &quot;Hello World, I&#x27;ve Arrived&quot;." width="1242" height="996" loading="eager" decoding="async">
+<img class="page-image" src="../images/testing-8b9d6f62/page_000.png" alt="A handwritten notebook page." width="1242" height="1185" loading="eager" decoding="async">
 
 </div>
 </body>
