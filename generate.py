@@ -228,10 +228,29 @@ def main() -> None:
         if not args.no_vision:
             save_vision_cache(vision_cache_path, vision_cache)
 
+        # A WiFi drop mid-pull can leave an icon's page half-converted. Drop any
+        # icon whose file didn't materialize rather than aborting the whole
+        # publish later on -- the posts matter more than a header or toggle.
+        for key in ("wordmark", "sun", "moon"):
+            path = chrome[key]
+            if path is not None and not path.exists():
+                print(
+                    f"  ! {key} icon missing (likely a dropped pull); skipping it",
+                    file=sys.stderr,
+                )
+                chrome[key] = None
+
         # Match the sun and moon to the same size so the toggle button looks
         # consistent in either state, however differently they were drawn.
         if chrome["sun"] is not None and chrome["moon"] is not None:
-            normalize_icon_pair([chrome["sun"], chrome["moon"]])
+            try:
+                normalize_icon_pair([chrome["sun"], chrome["moon"]])
+            except (OSError, ValueError) as exc:
+                print(
+                    f"  ! toggle icon prep failed ({exc}); skipping toggle",
+                    file=sys.stderr,
+                )
+                chrome["sun"] = chrome["moon"] = None
 
         write_site(
             posts_with_pages,
