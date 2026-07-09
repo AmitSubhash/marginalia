@@ -17,15 +17,17 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from .blocks import (
-    GAP_FLOOR_PX,
-    GAP_FRAC,
-    INK_THRESHOLD,
-    MIN_INK_ROW_FRAC,
-    _segment,
-)
+from .blocks import INK_THRESHOLD, MIN_INK_ROW_FRAC, _segment
 
-TITLE_MAX_HEIGHT_FRAC = 0.20  # a first block taller than this is body text, not a title
+# The title is the FIRST line of ink. Split lines by a small gap scaled to the
+# page *width* (constant across pages) rather than a fraction of the *height*:
+# an extended page can be 6x taller, which would balloon a height-based gap and
+# merge the title line into the body. Line gaps are ~constant in pixels because
+# the render width is fixed, so a small width-relative gap isolates the first
+# line whether the page is short or very tall.
+TITLE_LINE_GAP_FRAC = 0.006  # ~8px at the reMarkable's render width
+TITLE_LINE_GAP_MIN_PX = 6
+TITLE_MAX_HEIGHT_PX = 260  # a "first line" taller than this is merged body, not a title
 TITLE_PAD_PX = 10  # breathing room around the cropped title ink
 
 
@@ -54,16 +56,15 @@ def crop_title(
     height, width = arr.shape
     ink = arr < ink_threshold
 
-    gap_thresh = max(GAP_FLOOR_PX, int(GAP_FRAC * height))
+    gap_thresh = max(TITLE_LINE_GAP_MIN_PX, int(TITLE_LINE_GAP_FRAC * width))
     min_ink_px = max(3, int(MIN_INK_ROW_FRAC * width))
     blocks = _segment(ink, gap_thresh, min_ink_px)
 
-    # Need a distinct title block plus at least one body block below it.
-    if len(blocks) < 2:
+    if not blocks:
         return False
     r0, r1 = blocks[0]
-    if (r1 - r0 + 1) > TITLE_MAX_HEIGHT_FRAC * height:
-        return False  # first block is too tall to be a heading
+    if (r1 - r0 + 1) > TITLE_MAX_HEIGHT_PX:
+        return False  # first block is too tall to be a single title line
 
     cols = np.flatnonzero(ink[r0 : r1 + 1].any(axis=0))
     if cols.size == 0:
